@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* CARAXO Teal palette */
+    --background: 160 20% 98%;
+    --foreground: 200 15% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 15% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 15% 15%;
+    --primary: 176 98% 22%;       /* #01696F teal */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 176 30% 92%;
+    --secondary-foreground: 176 98% 18%;
+    --muted: 200 15% 94%;
+    --muted-foreground: 200 10% 45%;
+    --accent: 176 30% 88%;
+    --accent-foreground: 176 98% 18%;
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 200 15% 88%;
+    --input: 200 15% 88%;
+    --ring: 176 98% 22%;
+    --radius: 0.5rem;
+
+    /* Custom tokens */
+    --teal: #01696F;
+    --teal-light: #E0F2F1;
+    --teal-dark: #004F54;
+    --warning: #964219;
+    --warning-bg: #FFFDE7;
+    --danger-bg: #FFF0F0;
+    --success: #437A22;
+    --success-bg: #F1F8E9;
+  }
+
+  .dark {
+    --background: 200 20% 8%;
+    --foreground: 160 10% 90%;
+    --card: 200 18% 12%;
+    --card-foreground: 160 10% 90%;
+    --popover: 200 18% 12%;
+    --popover-foreground: 160 10% 90%;
+    --primary: 176 60% 55%;
+    --primary-foreground: 200 20% 8%;
+    --secondary: 200 15% 20%;
+    --secondary-foreground: 160 10% 90%;
+    --muted: 200 15% 18%;
+    --muted-foreground: 200 10% 55%;
+    --accent: 200 15% 22%;
+    --accent-foreground: 160 10% 90%;
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 200 15% 22%;
+    --input: 200 15% 22%;
+    --ring: 176 60% 55%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Satoshi', system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Custom utilities */
+.badge-complexite-1 { @apply bg-green-50 text-green-700 border border-green-200; }
+.badge-complexite-2 { @apply bg-amber-50 text-amber-700 border border-amber-200; }
+.badge-complexite-3 { @apply bg-red-50 text-red-700 border border-red-200; }
+.badge-qualite-1 { @apply bg-gray-50 text-gray-600 border border-gray-200; }
+.badge-qualite-2 { @apply bg-blue-50 text-blue-700 border border-blue-200; }
+.badge-qualite-3 { @apply bg-teal-50 text-teal-700 border border-teal-200; }
+
+.card-hover { @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5; }
+.teal-gradient { background: linear-gradient(135deg, #01696F 0%, #004F54 100%); }
+
+/* Table striping */
+.table-row-even { @apply bg-white; }
+.table-row-odd  { @apply bg-slate-50/60; }
