@@ -4,10 +4,10 @@ services:
     env: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: NODE_ENV=production node dist/index.cjs
+    startCommand: bash start.sh
     envVars:
       - key: JWT_SECRET
-        generateValue: true
+        value: f2b2ac73860813d23bfead1c28ccef2df44f7f49f31d9e42a5124c2a4ef3c955
       - key: NODE_ENV
         value: production
       - key: DB_PATH
