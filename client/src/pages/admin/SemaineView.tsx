@@ -29,39 +29,48 @@ function weekLabel(key: string) {
   return `Semaine ${sw} — ${year}`;
 }
 
+// Extrait les mots-clés thématiques significatifs d'un thème
+function extractKeywords(theme: string): string[] {
+  const stopwords = new Set([
+    "de","du","des","le","la","les","un","une","en","et","ou","à","au","aux",
+    "sur","pour","dans","par","avec","sans","lors","une","l","d","qu","que",
+    "qui","se","sa","son","ses","ce","cet","cette","ces","est","sont","a","ont",
+    "il","elle","ils","elles","nous","vous","leur","leurs","y","ne","pas","plus",
+    "si","je","tu","me","te","lui","eux","tout","tous","toute","toutes",
+  ]);
+  return theme
+    .toLowerCase()
+    .replace(/[^a-zàâäéèêëîïôùûüçœ\s]/gi, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !stopwords.has(w));
+}
+
 export default function SemaineView() {
   const { data: tickets = [], isLoading } = useQuery<Ticket[]>({ queryKey: ["/api/tickets"] });
   const { data: recaps = [] } = useQuery<Recap[]>({ queryKey: ["/api/recaps"] });
 
-  // Build week options from recaps
   const weekOptions = useMemo(() => {
     const weeks = new Set<string>();
-    recaps.forEach(r => {
-      if (r.weekStart) weeks.add(getISOWeek(r.weekStart));
-    });
-    // Also from tickets
-    tickets.forEach(t => {
-      if (t.dateReception) weeks.add(getISOWeek(t.dateReception));
-    });
+    recaps.forEach(r => { if (r.weekStart) weeks.add(getISOWeek(r.weekStart)); });
+    tickets.forEach(t => { if (t.dateReception) weeks.add(getISOWeek(t.dateReception)); });
     return Array.from(weeks).sort().reverse();
   }, [recaps, tickets]);
 
   const [selectedWeek, setSelectedWeek] = useState<string>("all");
 
-  // Filter tickets by week
   const filteredTickets = useMemo(() => {
     if (selectedWeek === "all") return tickets;
     return tickets.filter(t => t.dateReception && getISOWeek(t.dateReception) === selectedWeek);
   }, [tickets, selectedWeek]);
 
-  // Aggregations
+  // KPIs globaux
   const totalQ = filteredTickets.reduce((s, t) => s + t.nbQuestions, 0);
   const totalF = filteredTickets.reduce((s, t) => s + t.montantFacture, 0);
   const totalAlerts = filteredTickets.filter(t => {
     try { return JSON.parse(t.alertes || "[]").length > 0; } catch { return false; }
   }).length;
 
-  // By consultant
+  // Par consultant
   const byConsultant = useMemo(() => {
     const map: Record<string, { name: string; tickets: number; questions: number; facturation: number; alertes: number }> = {};
     filteredTickets.forEach(t => {
@@ -75,7 +84,7 @@ export default function SemaineView() {
     return Object.values(map).sort((a, b) => b.facturation - a.facturation);
   }, [filteredTickets]);
 
-  // By client
+  // Par client
   const byClient = useMemo(() => {
     const map: Record<string, { tickets: number; questions: number; facturation: number }> = {};
     filteredTickets.forEach(t => {
@@ -84,8 +93,49 @@ export default function SemaineView() {
       map[t.client].questions += t.nbQuestions;
       map[t.client].facturation += t.montantFacture;
     });
-    return Object.entries(map).sort((a, b) => b[1].facturation - a[1].facturation);
+    return Object.entries(map).sort((a, b) => b[1].questions - a[1].questions);
   }, [filteredTickets]);
+
+  // ── ANALYSE DES QUESTIONS ──
+
+  // Questions par entreprise
+  const questionsByEntreprise = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredTickets.forEach(t => {
+      map[t.client] = (map[t.client] || 0) + t.nbQuestions;
+    });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [filteredTickets]);
+
+  // Classement par typologie (typeQuestion + complexité)
+  const byTypologie = useMemo(() => {
+    const map: Record<string, { count: number; questions: number }> = {};
+    filteredTickets.forEach(t => {
+      const type = t.typeQuestion === "note_interne" ? "Note interne" : "Question client";
+      const complexLabel = t.complexite === 1 ? "Simple" : t.complexite === 2 ? "Standard" : "Complexe";
+      const key = `${type} — ${complexLabel}`;
+      if (!map[key]) map[key] = { count: 0, questions: 0 };
+      map[key].count++;
+      map[key].questions += t.nbQuestions;
+    });
+    return Object.entries(map).sort((a, b) => b[1].questions - a[1].questions);
+  }, [filteredTickets]);
+
+  // Thèmes récurrents (top mots-clés pondérés par nbQuestions)
+  const themesRecurrents = useMemo(() => {
+    const freq: Record<string, number> = {};
+    filteredTickets.forEach(t => {
+      const kws = extractKeywords(t.theme);
+      kws.forEach(kw => {
+        freq[kw] = (freq[kw] || 0) + t.nbQuestions;
+      });
+    });
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15);
+  }, [filteredTickets]);
+
+  const maxThemeCount = themesRecurrents[0]?.[1] || 1;
 
   if (isLoading) return <div className="p-6 text-muted-foreground">Chargement…</div>;
 
@@ -164,7 +214,6 @@ export default function SemaineView() {
                     </td>
                   </tr>
                 ))}
-                {/* Total row */}
                 <tr className="border-t bg-teal-50/60 font-semibold">
                   <td className="px-4 py-3" style={{ color: "#01696F" }}>TOTAL</td>
                   <td className="px-4 py-3">{filteredTickets.length}</td>
@@ -206,15 +255,142 @@ export default function SemaineView() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="flex-1 bg-muted rounded-full h-1.5 max-w-[80px]">
-                          <div className="h-1.5 rounded-full" style={{ background: "#01696F", width: `${totalF > 0 ? Math.round(data.facturation / totalF * 100) : 0}%` }} />
+                          <div className="h-1.5 rounded-full" style={{ background: "#01696F", width: `${totalQ > 0 ? Math.round(data.questions / totalQ * 100) : 0}%` }} />
                         </div>
-                        <span className="text-xs text-muted-foreground">{totalF > 0 ? Math.round(data.facturation / totalF * 100) : 0}%</span>
+                        <span className="text-xs text-muted-foreground">{totalQ > 0 ? Math.round(data.questions / totalQ * 100) : 0}%</span>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── ANALYSE DES QUESTIONS ── */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-2">Analyse des questions</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Questions par entreprise */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Questions par entreprise</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {questionsByEntreprise.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-5 py-4">Aucune donnée.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Entreprise</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Questions</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Volume</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {questionsByEntreprise.map(([client, q], i) => {
+                    const maxQ = questionsByEntreprise[0][1];
+                    return (
+                      <tr key={i} className={`border-b ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>
+                        <td className="px-4 py-2.5 font-medium text-xs">{client}</td>
+                        <td className="px-4 py-2.5 font-semibold text-xs" style={{ color: "#01696F" }}>{q}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-muted rounded-full h-1.5 max-w-[100px]">
+                              <div className="h-1.5 rounded-full" style={{ background: "#01696F", width: `${Math.round(q / maxQ * 100)}%` }} />
+                            </div>
+                            <span className="text-xs text-muted-foreground">{totalQ > 0 ? Math.round(q / totalQ * 100) : 0}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Classement par typologie */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Classement par typologie</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {byTypologie.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-5 py-4">Aucune donnée.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/40">
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Typologie</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Tickets</th>
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-muted-foreground">Questions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byTypologie.map(([type, data], i) => {
+                    const isNote = type.startsWith("Note");
+                    const isComplex = type.endsWith("Complexe");
+                    return (
+                      <tr key={i} className={`border-b ${i % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>
+                        <td className="px-4 py-2.5 text-xs">
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            isNote
+                              ? "bg-purple-50 text-purple-700"
+                              : isComplex
+                              ? "bg-red-50 text-red-700"
+                              : "bg-teal-50 text-teal-700"
+                          }`}>
+                            {type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs">{data.count}</td>
+                        <td className="px-4 py-2.5 font-semibold text-xs" style={{ color: "#01696F" }}>{data.questions}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Thèmes récurrents */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold">Thèmes récurrents</CardTitle>
+          <p className="text-xs text-muted-foreground mt-0.5">Mots-clés les plus fréquents dans les thèmes de tickets, pondérés par nombre de questions</p>
+        </CardHeader>
+        <CardContent>
+          {themesRecurrents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+          ) : (
+            <div className="space-y-2">
+              {themesRecurrents.map(([kw, count], i) => (
+                <div key={kw} className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-4 text-right">{i + 1}</span>
+                  <span className="text-xs font-medium w-36 truncate capitalize">{kw}</span>
+                  <div className="flex-1 bg-muted rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full transition-all"
+                      style={{
+                        background: i < 3 ? "#01696F" : i < 7 ? "#20808D" : "#BCE2E7",
+                        width: `${Math.round(count / maxThemeCount * 100)}%`
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold w-8 text-right" style={{ color: "#01696F" }}>{count}</span>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
